@@ -5,6 +5,7 @@ class Cy
 	attr_accessor :vars, :stack, :arrays
 	def initialize
 		@vars = {}
+		@codes = {}
 		@stack = []
 		@arrays = []
 		@mutate = true
@@ -287,11 +288,14 @@ class Cy
 	end
 	
 	def block (code)
-		proc do
-			self.push(proc do
+		p = proc do
 				self.exec code
-			end)
-	
+		end
+
+		@codes[p] = code
+
+		proc do
+			self.push p
 		end
 	end
 	
@@ -338,8 +342,8 @@ class Cy
 		print "\e[0m"
 		self.exec $_
 		print "\e[32m=> "
-		print @stack[length..-1].join(', ') + " "
-		puts @stack.to_s, "\e[0m"
+		print self.inspect_it(@stack[length..-1])[1...-1] + " "
+		puts self.inspect_it(@stack), "\e[0m"
 		@line_number += 1
 		true
 	end
@@ -354,6 +358,20 @@ class Cy
 			break unless self.repl_line(STDIN, false)
 		end
 
+	end
+
+	def inspect_it(item)
+		if item.class == Array
+			out = []
+			item.each do |x|
+				out << self.inspect_it(x)
+			end
+			"[#{out.join(', ')}]"
+		elsif item.class == Proc
+			"{ #{@codes[item]} }"
+		else
+			item.inspect
+		end
 	end
 end
 
