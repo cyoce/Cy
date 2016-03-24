@@ -1,3 +1,5 @@
+require 'optparse'
+
 class Cy
 	attr_accessor :vars, :stack, :arrays
 	def initialize
@@ -87,47 +89,75 @@ class Cy
 		'>>' => proc do
 			@stack.unshift @stack.pop
 		end,
-		
-		'puts' => proc do
-			puts self.pop
-		end,
-		
+
 		'print' => proc do
 			puts self.pop!
 		end,
 		
+		'&print' => proc do
+			puts self.pop
+		end,
+
 		'++' => proc do |x|
-			if x.class == Symbol
-				@vars[x.to_s] += 1
-			else
-				x + 1
-			end
+			@vars[x.to_s] += 1
+		end,
+
+		'&++' => proc do |x|
+			self.push @vars[x.to_s]
+			@vars[x.to_s] += 1
+		end,
+
+		'++&' => proc do |x|
+			@vars[x.to_s] += 1
+			self.push @vars[x.to_s]
 		end,
 		
 		'--' => proc do |x|
-			if x.class == Symbol
-				@vars[x.to_s] -= 1
-			else
-				x - 1
-			end
+			@vars[x.to_s] -= 1
+		end,
+
+		'&--' => proc do |x|
+			self.push @vars[x.to_s]
+			@vars[x.to_s] += 1
+		end,
+
+		'--&' => proc do |x|
+			@vars[x.to_s] -= 1
+			self.push @vars[x.to_s]
 		end,
 		
 		'+=' => proc do |var, val|
 			@vars[var.to_s] += val
 		end,
 		
+		'+&=' => proc do |var, val|
+			self.push(@vars[var.to_s] += val)
+		end,
+
 		'-=' => proc do |var, val|
 			@vars[var.to_s] -= val
 		end,
 		
+		'-&=' => proc do |var, val|
+			self.push(@vars[var.to_s] -= val)
+		end,
+
 		'*=' => proc do |var, val|
 			@vars[var.to_s] *= val
 		end,
 		
+		'*&=' => proc do |var, val|
+			self.push(@vars[var.to_s] *= val)
+		end,
+
 		'/=' => proc do |var, val|
 			@vars[var.to_s] /= val
 		end,
 		
+		'/&=' => proc do |var, val|
+			self.push(@vars[var.to_s] /= val)
+		end,
+
 		
 	}
 	
@@ -290,18 +320,24 @@ class Cy
 	end
 end
 
-puts (Cy.tokens 'foo bar { a b c a } 10').to_s
 
-cy = Cy.new
-while gets.chomp!
-	if /^:: ?(.+)/ =~ $_
-		puts "-> " + (eval $1).to_s
-	else
-		cy.exec $_
-		puts "=> #{cy.stack}"
+parser = OptionParser.new do |args|
+	args.on('-f [file]') do |file|
+		cy = Cy.new
+		cy.exec File.read(file)
+	end
+
+	args.on('-i [file]') do |file|
+		cy = Cy.new
+		File.open(file, 'r') do |f|
+			f.each_line do |line|
+				length = cy.stack.size
+				puts line
+				cy.exec line
+				puts "=> #{cy.stack[length..-1].join(', ')} #{cy.stack.to_s}"
+			end
+		end
 	end
 end
 
-
-
-
+parser.parse! ARGV
