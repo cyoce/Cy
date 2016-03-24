@@ -395,6 +395,17 @@ parser = OptionParser.new do |args|
 			cy.repl
 		end
 	end
+
+	args.on('-m [file]') do |file|
+		File.open(file, 'r') do |f|
+			puts "# [Cy](https://github.com/cyoce/Cy), #{f.size} bytes"
+			puts ""
+			f.each_line do |line|
+				puts "    #{line}"
+			end
+		end
+
+	end
 end
 
 parser.parse! ARGV

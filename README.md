@@ -8,6 +8,8 @@
 
 `$ ruby cy.rb -r` <br> cy REPL mode
 
+`$ruby cy.rb -m foo.cy` <br> output the markdown for posting the contents of `foo.cy` as an answer on CodeGolf.SE
+
 
 # Doc
 
