@@ -35,10 +35,23 @@ A variable is initialized with an `=` sign before it. This will pop a value off 
 - `.foo 2 /=` divide
 
 
-```ruby
-=> []
-:: 10 =x
-=> []
-:: $x
-=> 10 [10]
-```
+## Blocks and Functions
+A block is surrounded by `{ }`. This denotes a set of instructions. **A block of code is an object containing a set of instructions, and as such these instructions are not immediately executed**. Blocks are passed as arguments to constructions such as the `while` loop, `if` statement, etc. 
+
+Since a block is simply a type of object, blocks can of course be pushed and popped on the stack, stored in containers, or assigned to a variable. The latter is how a function can be defined: store a block in a variable. There are two ways to call a block. The first is the "method" approach; if a block is stored in a variable, simply writing the name of the variable (important: no `$` should precede it) will call it. Alternatively, the `!` operator will invoke the block at the top of the stack.
+
+Example:
+
+
+	>> { 1 + 2 * } =f # f(x) = 2(x+1)
+	=> []
+	
+	>> 3 f
+	=> [8]
+	
+	>> $f
+	=> [8, { 1 + 2 * }]
+	
+	>> !
+	=> [18]
+
