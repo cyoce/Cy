@@ -1,4 +1,12 @@
-# Postfix-Language
+# Usage
+
+`$ cy.rb -f foo.cy` <br> run `foo.cy` as a cy program
+
+`$ cy.rb -i foo.cy` <br> run `foo.cy`, and print the stack after each line
+
+`$ cy.rb -r foo.cy` <br> run `foo.cy`, enter REPL mode with the resulting stack/namespace.
+
+`$ cy.rb -r` <br> cy REPL mode
 
 
 # Doc

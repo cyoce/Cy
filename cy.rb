@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 require 'optparse'
 
 class Cy
@@ -7,6 +8,7 @@ class Cy
 		@stack = []
 		@arrays = []
 		@mutate = true
+		@line_number = 0
 		
 		@@ops.each do |key, func|
 			@vars[key] = proc do
@@ -157,6 +159,9 @@ class Cy
 		'/&=' => proc do |var, val|
 			self.push(@vars[var.to_s] /= val)
 		end,
+		'exit' => proc do
+			exit
+		end
 
 		
 	}
@@ -307,16 +312,48 @@ class Cy
 				tokens[-1] += x
 			end
 		end
+		tokens.pop if tokens[0] == ''
 		tokens
 	end
 	
 	def exec(line)
 		tokens = Cy.tokens(line)
 		tokens.each do |token|
-			next if token == ""
+			next if token == ''
 			func = self.func token
 			func.call
 		end
+	end
+
+	def prompt
+		print "\e[37m>> #{@line_number}.\e[0m\e[1m\t "
+	end
+
+	def repl_line(file, disp=true)
+		length = @stack.size
+		self.prompt unless disp
+		return false unless file.gets
+		self.prompt if disp
+		print "#{$_.chomp + "\n"}" if disp
+		print "\e[0m"
+		self.exec $_
+		print "\e[32m=> "
+		print @stack[length..-1].join(', ') + " "
+		puts @stack.to_s, "\e[0m"
+		@line_number += 1
+		true
+	end
+
+
+	def repl(file=nil)
+		while file
+			break unless self.repl_line(file)
+		end
+
+		while true
+			break unless self.repl_line(STDIN, false)
+		end
+
 	end
 end
 
@@ -330,12 +367,21 @@ parser = OptionParser.new do |args|
 	args.on('-i [file]') do |file|
 		cy = Cy.new
 		File.open(file, 'r') do |f|
+			number = 0
 			f.each_line do |line|
-				length = cy.stack.size
-				puts line
-				cy.exec line
-				puts "=> #{cy.stack[length..-1].join(', ')} #{cy.stack.to_s}"
+				cy.repl_line line
 			end
+		end
+	end
+
+	args.on('-r [file]') do |file=nil|
+		cy = Cy.new
+		if file
+			File.open(file) do |f|
+				cy.repl f
+			end
+		else
+			cy.repl
 		end
 	end
 end
