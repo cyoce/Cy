@@ -54,7 +54,10 @@ class Cy
 		'>=' => ->(x,y){ x >= y },
 		'<=' => ->(x,y){ x <= y },
 		'==' => ->(x,y){ x == y },
-		'..' => ->(x,y){ Array x .. y }
+		'!=' => ->(x,y){ x != y },
+		'..' => ->(x,y){ Array x .. y },
+		'...' => ->(x,y){ x .. y },
+		'zip' => ->(x,y){ x.each_with_index.map { |i,j| [i, y[j]] } }
 	}
 	
 	@@cmd = {
@@ -90,11 +93,31 @@ class Cy
 			end
 		end,
 
-		'each' => proc do |body, iter|
+		'each' => proc do |iter, body|
 			iter.each do |x|
 				self.push x
 				body.call
 			end
+		end,
+
+		'zipwith' => proc do |x, y, func|
+			out = []
+			(0...x.size).each do |i|
+				self.push x[i], y[i]
+				func.call
+				out << self.pop!
+			end
+			self.push out
+		end,
+
+		'fold' => proc do |iter, func|
+			iter = Array iter
+			while iter.size > 1
+				self.push(*iter.slice!(-2, 2))
+				func.call
+				iter.push self.pop!
+			end
+			self.push iter.pop
 		end,
 
 		'[' => proc do 
