@@ -263,27 +263,7 @@ class Cy
 	
 	def string (s)
 		proc do
-			escape = false
-			out = ''
-			s.split('').each do |ch|
-				if escape
-					if ch == '%'
-						out += '%'
-					elsif ch == '\\'
-						out += '\\'
-					else
-						out += eval('"\\' + ch + '"')
-					end
-					escape = false
-				elsif ch == '\\'
-					escape = true
-				elsif ch == '%'
-					out += "#{pop}"
-				else
-					out += ch
-				end
-			end
-			self.push out
+			self.push s
 		end
 	end
 	
@@ -302,21 +282,34 @@ class Cy
 	def Cy.tokens (code)
 		tokens = ['']
 		level = 0
-		code.gsub!(/ ?([\[\],!]) ?/,' \1 ')
-		code.gsub(/\s+/, ' ').split('').each do |x|		
-			if x == '{'
+		quote = false
+		escape = false
+		i=0
+		iter = code.gsub(/\s+/, ' ').split('')
+		iter.each do |x|
+			if quote
+
+			elsif x == '{'
 				level += 1
 			elsif x == '}'
 				level -= 1
 			end
 			
-			if x == ' ' and level == 0
+			if x == '"'
+				quote = not(quote)
+			end
+			if quote
+				tokens[-1] += x
+			elsif x == ' ' and level == 0
 				tokens << ''
+			elsif '[],!'.include? x
+				tokens << x << ''
 			else
 				tokens[-1] += x
 			end
+			i+=1
 		end
-		tokens.pop if tokens[0] == ''
+		tokens.pop if tokens[-1] == ''
 		tokens
 	end
 	
