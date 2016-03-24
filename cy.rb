@@ -165,10 +165,13 @@ class Cy
 			when /^=(\w+)$/	
 				self.setVar $1
 			
+			when /^&=(\w+)$/
+				self.setVar $1, false
+
 			when /^\$(\w+)$/
 				self.getVar $1
 			
-			when /^([a-zA-Z_]+)$/
+			when /^(&?[a-zA-Z_]+)$/
 				self.runMeth $1
 			
 			when /^"(.*)"$/
@@ -200,9 +203,13 @@ class Cy
 		end
 	end
 	
-	def setVar (var)
+	def setVar (var, mutate=true)
 		proc do
-			@vars[var] = self.pop!
+			if mutate
+				@vars[var] = self.pop!
+			else
+				@vars[var] = self.pop
+			end
 		end
 	end
 	
