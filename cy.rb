@@ -9,7 +9,13 @@ class Cy
 		@stack = []
 		@arrays = []
 		@mutate = true
-		@line_number = 0
+
+		@@ops.each do |key, func|
+			@vars['&' + key] = proc do
+				vals = self.pop func.arity
+				self.push instance_exec(*vals, &func)
+			end
+		end
 		
 		@@ops.each do |key, func|
 			@vars[key] = proc do
@@ -17,6 +23,15 @@ class Cy
 				self.push instance_exec(*vals, &func)
 			end
 		end
+
+
+		@@cmd.each do |key, func|
+			@vars['&' + key] = proc do
+				vals = self.pop func.arity
+				instance_exec(*vals, &func)
+			end
+		end
+
 		@@cmd.each do |key, func|
 			@vars[key] = proc do
 				vals = self.pop! func.arity
@@ -31,29 +46,42 @@ class Cy
 		'-' => ->(x,y){ x - y },
 		'*' => ->(x,y){ x * y },
 		'/' => ->(x,y){ Float(x) / Float(y) },
+		'%' => ->(x,y){ x % y },
 		'^' => ->(x,y){ x ** y },
 		'!!' => ->(x,y){ x[y] },
 		'>' => ->(x,y){ x > y },
 		'<' => ->(x,y){ x < y },
 		'>=' => ->(x,y){ x >= y },
-		'<=' => ->(x,y){ x <= y }
+		'<=' => ->(x,y){ x <= y },
+		'==' => ->(x,y){ x == y },
+		'..' => ->(x,y){ Array x .. y }
 	}
 	
 	@@cmd = {
 		'!' => proc do |cmd|
 			instance_exec(&cmd)
 		end,
+
 		'while' => proc do |body, con|
 			while Cy.bool(self.call con)
 				self.call body
 			end
 		end,
-		'do_while' => proc do |body|
+
+		'do' => proc do |body|
 			body.call
 			while Cy.bool(self.pop!)
 				body.call
 			end
 		end,
+
+		'&do' => proc do |body|
+			body.call
+			while Cy.bool(self.pop)
+				body.call
+			end
+		end,
+
 		'if' => proc do |t, f, con|
 			if Cy.bool(self.pop!)
 				self.call t
@@ -61,44 +89,66 @@ class Cy
 				self.call f
 			end
 		end,
+
+		'each' => proc do |body, iter|
+			iter.each do |x|
+				self.push x
+				body.call
+			end
+		end,
+
 		'[' => proc do 
 			@arrays << []
 		end,
+
 		',' => proc do
 			@arrays[-1] << self.pop!
 		end,
+
 		']' => proc do
 			array = @arrays.pop
 			array << self.pop!
 			self.push(array)
 		end,
 		
-		'pop' => proc do
-			self.pop!
+		'pop' => proc do |x|
+
+		end,
+
+		'swap' => proc do |x, y|
+			self.push y, x
 		end,
 		
-		'swap' => proc do
-			self.push self.pop!, self.pop!
+		'dupe' => proc do
+			self.push self.pop
 		end,
 		
 		'rev' => proc do
 			@stack.reverse!
 		end,
 		
-		'<<' => proc do
-			@stack.push @stack.shift
+		'<-' => proc do
+			@stack.push @stack.shift unless @stack == []
 		end,
 		
-		'>>' => proc do
-			@stack.unshift @stack.pop
+		'<--' => proc do |x|
+			x.times do
+				@stack.push @stack.shift
+			end unless @stack == []
 		end,
 
-		'print' => proc do
-			puts self.pop!
+		'->' => proc do
+			@stack.unshift @stack.pop unless @stack == []
 		end,
 		
-		'&print' => proc do
-			puts self.pop
+		'-->' => proc do |x|
+			x.times do
+				@stack.unshift @stack.pop
+			end unless @stack == []
+		end,
+
+		'print' => proc do |x|
+			puts x
 		end,
 
 		'++' => proc do |x|
@@ -160,6 +210,15 @@ class Cy
 		'/&=' => proc do |var, val|
 			self.push(@vars[var.to_s] /= val)
 		end,
+
+		'%=' => proc do |var, val|
+			@vars[var.to_s] %= val
+		end,
+
+		'%&=' => proc do |var, val|
+			self.push(@vars[var.to_s] %= val)
+		end,
+
 		'exit' => proc do
 			exit
 		end
@@ -198,28 +257,27 @@ class Cy
 	
 	def func (s)
 		case s
+			when /^\.(\w+)/
+				self.symbol $1
+
+			when /\{\s*(.*?)\s*\}/
+				self.block $1
+
+			when /^"(.*)"$/
+				self.string $1
+
 			when /^=(\w+)$/	
 				self.setVar $1
 			
-			when /^&=(\w+)$/
+			when /^&=(.+)$/
 				self.setVar $1, false
 
-			when /^\$(\w+)$/
+			when /^\$(.+)$/
 				self.getVar $1
 			
-			when /^(&?[a-zA-Z_]+)$/
+			when /^(&?[.]+)$/
 				self.runMeth $1
-			
-			when /^"(.*)"$/
-				self.string $1
-			
-			when /\{\s*(.*?)\s*\}/
-				self.block $1
-			
-			when /^\.(\w+)/
-				self.symbol $1
-			
-			
+
 			else
 				cmd = @vars[s]
 				if cmd
@@ -282,12 +340,11 @@ class Cy
 	def Cy.tokens (code)
 		tokens = ['']
 		level = 0
-		quote = false
-		escape = false
+		quote = escape = comment = false
 		i=0
 		iter = code.gsub(/\s+/, ' ').split('')
 		iter.each do |x|
-			if quote
+			if quote or comment
 
 			elsif x == '{'
 				level += 1
@@ -295,10 +352,18 @@ class Cy
 				level -= 1
 			end
 			
-			if x == '"'
-				quote = not(quote)
+			if level > 0
+
+			elsif quote
+				quote = not(quote) if x == '"'
+			elsif comment
+				comment = not(comment) if x == '#'
+			else
+				comment = not(comment) if x == '#'
+				quote = not(quote) if x == '"'
 			end
-			if quote
+
+			if quote or comment
 				tokens[-1] += x
 			elsif x == ' ' and level == 0
 				tokens << ''
@@ -323,7 +388,7 @@ class Cy
 	end
 
 	def prompt
-		print "\e[37m>> #{@line_number}.\e[0m\e[1m\t "
+		print "\e[37m>> \e[0m\e[1m\t "
 	end
 
 	def repl_line(file, disp=true)
@@ -335,9 +400,7 @@ class Cy
 		print "\e[0m"
 		self.exec $_
 		print "\e[32m=> "
-		print self.inspect_it(@stack[length..-1])[1...-1] + " "
 		puts self.inspect_it(@stack), "\e[0m"
-		@line_number += 1
 		true
 	end
 
@@ -373,16 +436,6 @@ parser = OptionParser.new do |args|
 	args.on('-f [file]') do |file|
 		cy = Cy.new
 		cy.exec File.read(file)
-	end
-
-	args.on('-i [file]') do |file|
-		cy = Cy.new
-		File.open(file, 'r') do |f|
-			number = 0
-			f.each_line do |line|
-				cy.repl_line line
-			end
-		end
 	end
 
 	args.on('-r [file]') do |file=nil|
