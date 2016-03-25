@@ -42,22 +42,36 @@ class Cy
 
 	
 	@@ops = {
-		'+' => ->(x,y){ x + y },
-		'-' => ->(x,y){ x - y },
-		'*' => ->(x,y){ x * y },
-		'/' => ->(x,y){ Float(x) / Float(y) },
-		'%' => ->(x,y){ x % y },
-		'^' => ->(x,y){ x ** y },
-		'!!' => ->(x,y){ x[y] },
-		'>' => ->(x,y){ x > y },
-		'<' => ->(x,y){ x < y },
-		'>=' => ->(x,y){ x >= y },
-		'<=' => ->(x,y){ x <= y },
-		'==' => ->(x,y){ x == y },
-		'!=' => ->(x,y){ x != y },
-		'..' => ->(x,y){ Array x .. y },
-		'...' => ->(x,y){ x .. y },
-		'zip' => ->(x,y){ x.each_with_index.map { |i,j| [i, y[j]] } }
+		'+' 	=> ->(x,y){ x + y },
+		'-' 	=> ->(x,y){ x - y },
+		'*' 	=> ->(x,y){ x * y },
+		'/' 	=> ->(x,y){ Float(x) / Float(y) },
+		'%' 	=> ->(x,y){ x % y },
+		'^' 	=> ->(x,y){ x ** y },
+		'!!'	=> ->(x,y){ x[y] },
+		'>' 	=> ->(x,y){ x > y },
+		'<' 	=> ->(x,y){ x < y },
+		'>=' 	=> ->(x,y){ x >= y },
+		'<=' 	=> ->(x,y){ x <= y },
+		'=='	=> ->(x,y){ x == y },
+		'!='	=> ->(x,y){ x != y },
+		'..'	=> ->(x,y){ Array x .. y },
+		'...'	=> ->(x,y){ x .. y },
+		'zip'	=> ->(x,y){ x.each_with_index.map { |i,j| [i, y[j]] } },
+		'len'	=> ->(x){ x.size },
+		'not'	=> ->(x){ not Cy.bool(x) },
+		'stack'	=> ->(){ self.pop! @stack.size },
+		'&stack'=> ->(){ @stack },
+		'array' => ->(){ [*x]},
+		':>i' 	=> ->(){ Integer STDIN.gets },
+		':>f'	=> ->(){ Float STDIN.gets },
+		':>s'	=> ->(){ STDIN.gets.chomp },
+		':<' 	=> ->(x){ puts x },
+		':i' 	=> ->(x){ Integer x },
+		':f' 	=> ->(x){ Float x },
+		':s'	=> ->(x){ String x },
+		':r' 	=> ->(x){ x.inspect },
+
 	}
 	
 	@@cmd = {
@@ -85,11 +99,33 @@ class Cy
 			end
 		end,
 
-		'if' => proc do |t, f, con|
-			if Cy.bool(self.pop!)
+		'?' => proc do |t, f, con|
+			if Cy.bool(con)
 				self.call t
 			else
 				self.call f
+			end
+		end,
+
+		'&?' => proc do |t, f, con|
+			self.push con
+			if Cy.bool(con)
+				t.call
+			else
+				f.call
+			end
+		end,
+
+		'if' => proc do |body, con|
+			if Cy.bool(con)
+				body.call
+			end
+		end,
+
+		'&if' => proc do |body, con|
+			self.push con
+			if Cy.bool(con)
+				body.call
 			end
 		end,
 
@@ -98,6 +134,11 @@ class Cy
 				self.push x
 				body.call
 			end
+		end,
+
+		'times' => proc do |x, y|
+			x,y = y,x if x.class == Proc
+			x.times(&y)
 		end,
 
 		'zipwith' => proc do |x, y, func|
@@ -150,6 +191,10 @@ class Cy
 			@stack.reverse!
 		end,
 		
+		'expand' => proc do |iter|
+			self.push(*iter)
+		end,
+
 		'<-' => proc do
 			@stack.push @stack.shift unless @stack == []
 		end,
@@ -242,6 +287,14 @@ class Cy
 			self.push(@vars[var.to_s] %= val)
 		end,
 
+		'=' => proc do |var, val|
+			@vars[var.to_s] = val
+		end,
+
+		'&=' => proc do |var, val|
+			@vars[var.to_s] = val
+		end,
+
 		'exit' => proc do
 			exit
 		end
@@ -283,7 +336,7 @@ class Cy
 			when /^\.(\w+)/
 				self.symbol $1
 
-			when /\{\s*(.*?)\s*\}/
+			when /^\{\s*(.*?)\s*\}$/
 				self.block $1
 
 			when /^"(.*)"$/
@@ -344,7 +397,7 @@ class Cy
 	
 	def string (s)
 		proc do
-			self.push s
+			self.push eval('"' + s + '"')
 		end
 	end
 	
@@ -386,7 +439,11 @@ class Cy
 				quote = not(quote) if x == '"'
 			end
 
-			if quote or comment
+			if quote and not escape and x == '%'
+				tokens[-1] += '#{self.pop!}'
+			elsif quote and not escape and x == '&'
+				tokens[-1] += '#{self.pop}'
+			elsif quote or comment
 				tokens[-1] += x
 			elsif x == ' ' and level == 0
 				tokens << ''
@@ -454,34 +511,47 @@ class Cy
 	end
 end
 
-
+$action = nil
 parser = OptionParser.new do |args|
+	cy = Cy.new
 	args.on('-f [file]') do |file|
-		cy = Cy.new
-		cy.exec File.read(file)
+		$action = proc do
+			cy.exec File.read(file)
+		end
 	end
 
 	args.on('-r [file]') do |file=nil|
-		cy = Cy.new
 		if file
-			File.open(file) do |f|
-				cy.repl f
+			$action = proc do
+				File.open(file) do |f|
+					cy.repl f
+				end
 			end
 		else
-			cy.repl
+			$action = proc do
+				cy.repl
+			end
 		end
 	end
 
 	args.on('-m [file]') do |file|
-		File.open(file, 'r') do |f|
-			puts "# [Cy](https://github.com/cyoce/Cy), #{f.size} bytes"
-			puts ""
-			f.each_line do |line|
-				puts "    #{line}"
+		$action = proc do
+			File.open(file, 'r') do |f|
+				puts "# [Cy](https://github.com/cyoce/Cy), #{f.size} bytes"
+				puts ""
+				f.each_line do |line|
+					puts "    #{line}"
+				end
 			end
 		end
-
 	end
-end
 
+	args.on('-i') do
+		$implicit = true
+	end
+
+	cy.push(*args.order(*ARGV))
+end
+$implicit = false
 parser.parse! ARGV
+$action.call
