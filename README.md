@@ -10,6 +10,8 @@
 
 `$ ruby cy.rb -p` <br> implicit printing mode: all (non-block) values pushed to the stack will be printed automatically
 
+`$ ruby cy.rb -e "some code"` <br> run code directly from command line
+
 
 # Doc
 
