@@ -87,4 +87,5 @@ Values are surrounded by parentheses `()` and arguments that expect blocks will 
 ```
 Golfed:
 ```
-0 1 {&+}
+0 1 {&+} &do # requires -p flag
+```
