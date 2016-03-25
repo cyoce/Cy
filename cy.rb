@@ -23,8 +23,6 @@ class Cy
 				self.push instance_exec(*vals, &func)
 			end
 		end
-
-
 		@@cmd.each do |key, func|
 			@vars['&' + key] = proc do
 				vals = self.pop func.arity
@@ -39,12 +37,10 @@ class Cy
 			end
 		end
 	end
-
-	
 	@@ops = {
 		'+' 	=> ->(x,y){ x + y },
-		'-' 	=> ->(x,y){ x - y },
 		'*' 	=> ->(x,y){ x * y },
+		'-' 	=> ->(x,y){ x - y },
 		'/' 	=> ->(x,y){ Float(x) / Float(y) },
 		'%' 	=> ->(x,y){ x % y },
 		'^' 	=> ->(x,y){ x ** y },
@@ -65,14 +61,13 @@ class Cy
 		'array' => ->(){ [*x]},
 		':>i' 	=> ->(){ Integer STDIN.gets },
 		':>f'	=> ->(){ Float STDIN.gets },
-		':>s'	=> ->(){ STDIN.gets.chomp },
+		':>s'	=> ->(){ String(STDIN.gets).chomp },
+		':>' 	=> ->(){ STDIN.gets && $_.chomp },
 		':i' 	=> ->(x){ Integer x },
 		':f' 	=> ->(x){ Float x },
 		':s'	=> ->(x){ String x },
 		':r' 	=> ->(x){ x.inspect },
-
-	}
-	
+		}
 	@@cmd = {
 		'!' => proc do |cmd|
 			instance_exec(&cmd)
@@ -84,6 +79,14 @@ class Cy
 
 		'while' => proc do |body, con|
 			while Cy.bool(self.call con)
+				body.call
+			end
+		end,
+
+		'&while' => proc do |body, con|
+			while true
+				con.call
+				break unless Cy.bool(self.pop)
 				body.call
 			end
 		end,
@@ -102,16 +105,7 @@ class Cy
 			end
 		end,
 
-		'?' => proc do |t, f, con|
-			if Cy.bool(con)
-				self.call t
-			else
-				self.call f
-			end
-		end,
-
-		'&?' => proc do |t, f, con|
-			self.push con
+		'?' => proc do |con, t, f|
 			if Cy.bool(con)
 				t.call
 			else
@@ -119,14 +113,23 @@ class Cy
 			end
 		end,
 
-		'if' => proc do |body, con|
+		'&?' => proc do |t, f|
+			con = self.pop
+			if Cy.bool(con)
+				t.call
+			else
+				f.call
+			end
+		end,
+
+		'if' => proc do |con, body|
 			if Cy.bool(con)
 				body.call
 			end
 		end,
 
-		'&if' => proc do |body, con|
-			self.push con
+		'&if' => proc do |body|
+			con = self.pop
 			if Cy.bool(con)
 				body.call
 			end
@@ -164,7 +167,7 @@ class Cy
 			self.push iter.pop
 		end,
 
-		'[' => proc do 
+		'[' => proc do
 			@arrays << []
 		end,
 
@@ -177,7 +180,7 @@ class Cy
 			array << self.pop!
 			self.push(array)
 		end,
-		
+
 		'pop' => proc do |x|
 
 		end,
@@ -185,15 +188,15 @@ class Cy
 		'swap' => proc do |x, y|
 			self.push y, x
 		end,
-		
+
 		'dupe' => proc do
 			self.push self.pop
 		end,
-		
+
 		'rev' => proc do
 			@stack.reverse!
 		end,
-		
+
 		'expand' => proc do |iter|
 			self.push(*iter)
 		end,
@@ -201,7 +204,7 @@ class Cy
 		'<-' => proc do
 			@stack.push @stack.shift unless @stack == []
 		end,
-		
+
 		'<--' => proc do |x|
 			x.times do
 				@stack.push @stack.shift
@@ -211,7 +214,7 @@ class Cy
 		'->' => proc do
 			@stack.unshift @stack.pop unless @stack == []
 		end,
-		
+
 		'-->' => proc do |x|
 			x.times do
 				@stack.unshift @stack.pop
@@ -230,12 +233,11 @@ class Cy
 			self.push @vars[x.to_s]
 			@vars[x.to_s] += 1
 		end,
-
 		'++&' => proc do |x|
 			@vars[x.to_s] += 1
 			self.push @vars[x.to_s]
 		end,
-		
+
 		'--' => proc do |x|
 			@vars[x.to_s] -= 1
 		end,
@@ -249,11 +251,11 @@ class Cy
 			@vars[x.to_s] -= 1
 			self.push @vars[x.to_s]
 		end,
-		
+
 		'+=' => proc do |var, val|
 			@vars[var.to_s] += val
 		end,
-		
+
 		'+&=' => proc do |var, val|
 			self.push(@vars[var.to_s] += val)
 		end,
@@ -261,7 +263,7 @@ class Cy
 		'-=' => proc do |var, val|
 			@vars[var.to_s] -= val
 		end,
-		
+
 		'-&=' => proc do |var, val|
 			self.push(@vars[var.to_s] -= val)
 		end,
@@ -269,7 +271,7 @@ class Cy
 		'*=' => proc do |var, val|
 			@vars[var.to_s] *= val
 		end,
-		
+
 		'*&=' => proc do |var, val|
 			self.push(@vars[var.to_s] *= val)
 		end,
@@ -301,19 +303,16 @@ class Cy
 		'exit' => proc do
 			exit
 		end
-
-		
-	}
-	
+		}
 	def Cy.bool (val)
 		not [false, 0, nil, [], '', {}].include? (val)
 	end
-	
+
 	def call(func)
 		instance_exec(&func)
 		self.pop!
 	end
-	
+
 	def pop (n=nil)
 		if n
 			@stack.slice(-n, n)
@@ -321,7 +320,7 @@ class Cy
 			@stack[-1]
 		end
 	end
-	
+
 	def pop! (n=nil)
 		if n
 			@stack.slice!(-n, n)
@@ -329,7 +328,7 @@ class Cy
 			@stack.pop
 		end
 	end
-	
+
 	def push (*vals)
 		@stack.push(*vals)
 		vals.each do |val|
@@ -339,46 +338,45 @@ class Cy
 	
 	def func (s)
 		case s
-			when /^\.(\w+)/
-				self.symbol $1
+		when /^\.(\w+)/
+			self.symbol $1
 
-			when /^\{\s*(.*?)\s*\}$/
-				self.block $1
+		when /^\{\s*(.*?)\s*\}$/
+			self.block $1
 
-			when /^"(.*)"$/
-				self.string $1
+		when /^"(.*)"$/
+			self.string $1
 
-			when /^=(\w+)$/	
-				self.setVar $1
-			
-			when /^&=(.+)$/
-				self.setVar $1, false
+		when /^=(\w+)$/
+			self.setVar $1
 
-			when /^\$(.+)$/
-				self.getVar $1
-			
-			when /^(&?[.]+)$/
-				self.runMeth $1
+		when /^&=(.+)$/
+			self.setVar $1, false
 
+		when /^\$(.+)$/
+			self.getVar $1
+
+		when /^(&?[.]+)$/
+			self.runMeth $1
+
+		else
+			cmd = @vars[s]
+			if cmd
+				cmd
 			else
-				cmd = @vars[s]
-				if cmd
-					cmd
-				else
-					proc do
-						self.push (eval s)
-					end
+				proc do
+					self.push (eval s)
 				end
-		
+			end
 		end
 	end
-	
+
 	def getVar (var)
 		proc do
-				self.push @vars[var]
+			self.push @vars[var]
 		end
 	end
-	
+
 	def setVar (var, mutate=true)
 		proc do
 			if mutate
@@ -388,37 +386,35 @@ class Cy
 			end
 		end
 	end
-	
+
 	def runMeth (var)
 		proc do
 			@vars[var].call
 		end
 	end
-	
+
 	def symbol (s)
 		proc do
 			self.push s.to_sym
 		end
 	end
-	
+
 	def string (s)
 		proc do
 			self.push eval('"' + s + '"')
 		end
 	end
-	
+
 	def block (code)
 		p = proc do
-				self.exec code
+			self.exec code
 		end
-
 		@codes[p] = code
-
 		proc do
 			self.push p
 		end
 	end
-	
+
 	def Cy.tokens (code)
 		tokens = ['']
 		level = 0
@@ -427,7 +423,6 @@ class Cy
 		iter = code.gsub(/\s+/, ' ').split('')
 		iter.each do |x|
 			if quote or comment
-
 			elsif x == '{'
 				level += 1
 			elsif x == '}'
@@ -435,7 +430,6 @@ class Cy
 			end
 			
 			if level > 0
-
 			elsif quote
 				quote = not(quote) if x == '"'
 			elsif comment
@@ -491,7 +485,6 @@ class Cy
 		true
 	end
 
-
 	def repl(file=nil)
 		while file
 			break unless self.repl_line(file)
@@ -500,7 +493,6 @@ class Cy
 		while true
 			break unless self.repl_line(STDIN, false)
 		end
-
 	end
 
 	def inspect_it(item)
@@ -517,7 +509,6 @@ class Cy
 		end
 	end
 end
-
 $action = nil
 parser = OptionParser.new do |args|
 	cy = Cy.new
@@ -566,7 +557,6 @@ parser = OptionParser.new do |args|
 			cy.exec code
 		end
 	end
-
 	cy.push(*args.order(*ARGV))
 end
 $I = false
