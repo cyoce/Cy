@@ -66,7 +66,6 @@ class Cy
 		':>i' 	=> ->(){ Integer STDIN.gets },
 		':>f'	=> ->(){ Float STDIN.gets },
 		':>s'	=> ->(){ STDIN.gets.chomp },
-		':<' 	=> ->(x){ puts x },
 		':i' 	=> ->(x){ Integer x },
 		':f' 	=> ->(x){ Float x },
 		':s'	=> ->(x){ String x },
@@ -77,6 +76,10 @@ class Cy
 	@@cmd = {
 		'!' => proc do |cmd|
 			instance_exec(&cmd)
+		end,
+
+		':<' => proc do |x|
+			puts x
 		end,
 
 		'while' => proc do |body, con|
@@ -329,6 +332,9 @@ class Cy
 	
 	def push (*vals)
 		@stack.push(*vals)
+		vals.each do |val|
+			puts val unless val.class == Proc
+		end if $I
 	end
 	
 	def func (s)
@@ -465,6 +471,7 @@ class Cy
 			func = self.func token
 			func.call
 		end
+		sleep(Float($int)/1000) if $int
 	end
 
 	def prompt
@@ -546,12 +553,18 @@ parser = OptionParser.new do |args|
 		end
 	end
 
-	args.on('-i') do
-		$implicit = true
+	args.on('-i [INTERVAL]') do |int|
+		$int = Integer int
+	end
+
+	args.on('-p') do
+		$I = true
 	end
 
 	cy.push(*args.order(*ARGV))
 end
+$I = false
 $implicit = false
+$int=nil
 parser.parse! ARGV
 $action.call
