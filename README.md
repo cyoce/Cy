@@ -62,13 +62,29 @@ Example:
 	=> [18]
 
 ### Control Flow
-Control flow operators take one or more blocks ("body") and often a "condition" (which may also be a block) that determines how the body is executed. Common examples are the `if` statement, `while` loop, and `each` loop.
+Control flow operators take one or more blocks ("body") and often a "condition" (which may also be a block) that determines how the body is executed. By convention, the "condition" is before the "body". This is because the need for a variable condition is greater than the need for a variable body, so the condition can simply be popped off the stack. Unless otherwise specified, preceding the loop's name with an ampersand `&` will leave the condition on the stack. (e.g. `&each` will leave the iterable on the stack.) Common examples are the `if` statement, `while` loop, and `each` loop. 
 
-#### List of Control Structure
-- `<body> <iterable> each` <br> for each item of `iterable`, push it to the stack and invoke `body`
-- `<body> <condition> while` <br> keep executing `body` while `condition` continues pushing a truthy value to the stack
-- `<body> do` <br> execute `body` while the top of the stack (popped) is truthy
-- `<body> &do` <br> execute `body` while the top of the stack is truthy
-- `<truthy> <falsy> <condition> if` <br> execute `truthy` if `condition`, else execute `falsy`
+#### List of Control Structures
+Values are surrounded by parentheses `()` and arguments that expect blocks will be surrounded in braces `{}`.
+- `(iterable) {body} each` <br> for each item of `iterable`, push it to the stack and invoke `body`
+- `(condition) {body} while` <br> keep executing `body` while `condition` continues pushing a truthy value to the stack
+- `{body} do` <br> execute `body` while the top of the stack (popped) is truthy
+- `{body} &do` <br> execute `body` while the top of the stack is truthy
+- `(condition) {tbody} {fbody} ?` <br> execute `tbody` if `condition`, else execute `fbody`
+- `(condition) {body}` <br> execute `body` if `condition`.
 
 
+# Examples
+
+## Hello, World program
+```
+"Hello, World!" print
+
+
+## Infinite Fibonacci Sequence
+```
+0 &print 1 &print {&+ &print} {true} while
+```
+Golfed:
+```
+0 1 {&+}
