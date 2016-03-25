@@ -6,7 +6,9 @@
 
 `$ ruby cy.rb -r` <br> cy REPL mode
 
-`$ruby cy.rb -m foo.cy` <br> output the markdown for posting the contents of `foo.cy` as an answer on CodeGolf.SE
+`$ ruby cy.rb -m foo.cy` <br> output the markdown for posting the contents of `foo.cy` as an answer on CodeGolf.SE
+
+`$ ruby cy.rb -p` <br> implicit printing mode: all (non-block) values pushed to the stack will be printed automatically
 
 
 # Doc
