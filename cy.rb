@@ -6,8 +6,12 @@ class Cy
 	def initialize
 		@vars = {}
 		@codes = {}
-		@stack = []
-		@arrays = []
+
+		stack = []
+		@readers = [stack]
+		@writers = [stack]
+
+		@active = []
 		@mutate = true
 
 		@@ops.each do |key, func|
@@ -17,6 +21,14 @@ class Cy
 			end
 		end
 		
+		def reader
+			@readers[-1]
+		end
+
+		def writer
+			@writers[-1]
+		end
+
 		@@ops.each do |key, func|
 			@vars[key] = proc do
 				vals = self.pop! func.arity
@@ -43,8 +55,10 @@ class Cy
 		'-' 	=> ->(x,y){ x - y },
 		'/' 	=> ->(x,y){ Float(x) / Float(y) },
 		'%' 	=> ->(x,y){ x % y },
+		'<<'    => ->(x,y){ x << y },
+		'>>' 	=> ->(x,y){ x >> y },
 		'^' 	=> ->(x,y){ x ** y },
-		'!!'	=> ->(x,y){ x[y] },
+		'::'	=> ->(x,y){ x[y] },
 		'>' 	=> ->(x,y){ x > y },
 		'<' 	=> ->(x,y){ x < y },
 		'>=' 	=> ->(x,y){ x >= y },
@@ -56,8 +70,8 @@ class Cy
 		'zip'	=> ->(x,y){ x.each_with_index.map { |i,j| [i, y[j]] } },
 		'len'	=> ->(x){ x.size },
 		'not'	=> ->(x){ not Cy.bool(x) },
-		'stack'	=> ->(){ self.pop! @stack.size },
-		'&stack'=> ->(){ @stack },
+		'stack'	=> ->(){ self.pop! reader.size },
+		'&stack'=> ->(){ reader },
 		'array' => ->(){ [*x]},
 		':>i' 	=> ->(){ Integer STDIN.gets },
 		':>f'	=> ->(){ Float STDIN.gets },
@@ -168,17 +182,38 @@ class Cy
 		end,
 
 		'[' => proc do
-			@arrays << []
+			@active << []
 		end,
 
-		',' => proc do
-			@arrays[-1] << self.pop!
+		',' => proc do |item|
+			@active[-1] << item
 		end,
 
-		']' => proc do
-			array = @arrays.pop
-			array << self.pop!
+		']' => proc do |item|
+			array = @active.pop
+			array << item
 			self.push(array)
+		end,
+
+		'(' => proc do
+			@active << {}
+		end,
+
+		':' => proc do |key, value|
+			@active[-1][key] = value
+		end,
+
+		')' => proc do
+			hash = @active.pop
+			self.push hash
+		end,
+
+		'::=' => proc do |iter, index, value|
+			iter[index] = value
+		end,
+
+		'&::=' => proc do |index, value|
+			(self.pop)[index] = value
 		end,
 
 		'pop' => proc do |x|
@@ -194,7 +229,7 @@ class Cy
 		end,
 
 		'rev' => proc do
-			@stack.reverse!
+
 		end,
 
 		'expand' => proc do |iter|
@@ -202,23 +237,23 @@ class Cy
 		end,
 
 		'<-' => proc do
-			@stack.push @stack.shift unless @stack == []
+			writer.push reader.shift unless reader == []
 		end,
 
 		'<--' => proc do |x|
 			x.times do
-				@stack.push @stack.shift
-			end unless @stack == []
+				writer.push reader.shift
+			end unless reader == []
 		end,
 
 		'->' => proc do
-			@stack.unshift @stack.pop unless @stack == []
+			writer.unshift reader.pop unless reader == []
 		end,
 
 		'-->' => proc do |x|
 			x.times do
-				@stack.unshift @stack.pop
-			end unless @stack == []
+				writer.unshift reader.pop
+			end unless reader == []
 		end,
 
 		'print' => proc do |x|
@@ -315,22 +350,22 @@ class Cy
 
 	def pop (n=nil)
 		if n
-			@stack.slice(-n, n)
+			reader.slice(-n, n)
 		else
-			@stack[-1]
+			reader[-1]
 		end
 	end
 
 	def pop! (n=nil)
 		if n
-			@stack.slice!(-n, n)
+			reader.slice!(-n, n)
 		else
-			@stack.pop
+			reader.pop
 		end
 	end
 
 	def push (*vals)
-		@stack.push(*vals)
+		writer.push(*vals)
 		vals.each do |val|
 			puts val unless val.class == Proc
 		end if $I
@@ -447,7 +482,7 @@ class Cy
 				tokens[-1] += x
 			elsif x == ' ' and level == 0
 				tokens << ''
-			elsif '[],!'.include? x
+			elsif '[],!()'.include? x
 				tokens << x << ''
 			else
 				tokens[-1] += x
@@ -473,7 +508,7 @@ class Cy
 	end
 
 	def repl_line(file, disp=true)
-		length = @stack.size
+		length = writer.size
 		self.prompt unless disp
 		return false unless file.gets
 		self.prompt if disp
@@ -481,7 +516,7 @@ class Cy
 		print "\e[0m"
 		self.exec $_
 		print "\e[32m=> "
-		puts self.inspect_it(@stack), "\e[0m"
+		puts self.inspect_it(writer), "\e[0m"
 		true
 	end
 
