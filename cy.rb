@@ -81,7 +81,7 @@ class Cy
 
 		'while' => proc do |body, con|
 			while Cy.bool(self.call con)
-				self.call body
+				body.call
 			end
 		end,
 
