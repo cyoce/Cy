@@ -561,6 +561,12 @@ parser = OptionParser.new do |args|
 		$I = true
 	end
 
+	args.on('-e [code]') do |code|
+		$action = proc do
+			cy.exec code
+		end
+	end
+
 	cy.push(*args.order(*ARGV))
 end
 $I = false
