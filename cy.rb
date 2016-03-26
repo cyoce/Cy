@@ -14,35 +14,48 @@ class Cy
 		@active = []
 		@mutate = true
 
+		@@mathops.each do |key, func|
+			@@ops[key] = func
+			@vars[key + '='] = proc do
+				var, val = self.pop! 2
+				@vars[var.to_s] = func.call(@vars[var.to_s], val)
+			end
+			@vars["&#{key}="] = proc do
+				var, val = self.pop! 2
+				self.push(@vars[var.to_s] = func.call(@vars[var.to_s], val))
+			end
+		end
+
+
 		@@ops.each do |key, func|
 			@vars['&' + key] = proc do
 				vals = self.pop func.arity
 				self.push instance_exec(*vals, &func)
 			end
-		end
-		
-		def reader
-			@readers[-1]
-		end
 
-		def writer
-			@writers[-1]
-		end
-
-		@@ops.each do |key, func|
 			@vars[key] = proc do
 				vals = self.pop! func.arity
 				self.push instance_exec(*vals, &func)
 			end
 		end
+		
+		@@flow.each do |key, func|
+			@vars[key] = proc do
+				vals = self.pop! func.arity
+				instance_exec(*vals, &func)
+			end
+			@vars['&' + key] = proc do
+				vals = self.pop!(func.arity-1)
+				instance_exec(self.pop, *vals, &func)
+			end unless @@flow.key?('&' + key) or key[0] == '&'
+		end
+
 		@@cmd.each do |key, func|
 			@vars['&' + key] = proc do
 				vals = self.pop func.arity
 				instance_exec(*vals, &func)
-			end
-		end
+			end unless @@cmd.key?('&' + key) or key[0] == '&'
 
-		@@cmd.each do |key, func|
 			@vars[key] = proc do
 				vals = self.pop! func.arity
 				instance_exec(*vals, &func)
@@ -50,14 +63,6 @@ class Cy
 		end
 	end
 	@@ops = {
-		'+' 	=> ->(x,y){ x + y },
-		'*' 	=> ->(x,y){ x * y },
-		'-' 	=> ->(x,y){ x - y },
-		'/' 	=> ->(x,y){ Float(x) / Float(y) },
-		'%' 	=> ->(x,y){ x % y },
-		'<<'    => ->(x,y){ x << y },
-		'>>' 	=> ->(x,y){ x >> y },
-		'^' 	=> ->(x,y){ x ** y },
 		'::'	=> ->(x,y){ x[y] },
 		'>' 	=> ->(x,y){ x > y },
 		'<' 	=> ->(x,y){ x < y },
@@ -82,6 +87,16 @@ class Cy
 		':s'	=> ->(x){ String x },
 		':r' 	=> ->(x){ x.inspect },
 		}
+
+	@@mathops = {
+		'+' 	=> ->(x,y){ x + y },
+		'*' 	=> ->(x,y){ x * y },
+		'-' 	=> ->(x,y){ x - y },
+		'/' 	=> ->(x,y){ Float(x) / Float(y) },
+		'%' 	=> ->(x,y){ x % y },
+		'<<'    => ->(x,y){ x << y },
+		'>>' 	=> ->(x,y){ x >> y },
+		}
 	@@cmd = {
 		'!' => proc do |cmd|
 			instance_exec(&cmd)
@@ -89,76 +104,6 @@ class Cy
 
 		':<' => proc do |x|
 			puts x
-		end,
-
-		'while' => proc do |body, con|
-			while Cy.bool(self.call con)
-				body.call
-			end
-		end,
-
-		'&while' => proc do |body, con|
-			while true
-				con.call
-				break unless Cy.bool(self.pop)
-				body.call
-			end
-		end,
-
-		'do' => proc do |body|
-			body.call
-			while Cy.bool(self.pop!)
-				body.call
-			end
-		end,
-
-		'&do' => proc do |body|
-			body.call
-			while Cy.bool(self.pop)
-				body.call
-			end
-		end,
-
-		'?' => proc do |con, t, f|
-			if Cy.bool(con)
-				t.call
-			else
-				f.call
-			end
-		end,
-
-		'&?' => proc do |t, f|
-			con = self.pop
-			if Cy.bool(con)
-				t.call
-			else
-				f.call
-			end
-		end,
-
-		'if' => proc do |con, body|
-			if Cy.bool(con)
-				body.call
-			end
-		end,
-
-		'&if' => proc do |body|
-			con = self.pop
-			if Cy.bool(con)
-				body.call
-			end
-		end,
-
-		'each' => proc do |iter, body|
-			iter.each do |x|
-				self.push x
-				body.call
-			end
-		end,
-
-		'times' => proc do |x, y|
-			x,y = y,x if x.class == Proc
-			x.times(&y)
 		end,
 
 		'zipwith' => proc do |x, y, func|
@@ -212,7 +157,7 @@ class Cy
 			iter[index] = value
 		end,
 
-		'&::=' => proc do |index, value|
+		'::&=' => proc do |index, value|
 			(self.pop)[index] = value
 		end,
 
@@ -229,7 +174,11 @@ class Cy
 		end,
 
 		'rev' => proc do
+			reader.reverse!
+		end,
 
+		'&rev' => proc do
+			self.push(*reader.reverse)
 		end,
 
 		'expand' => proc do |iter|
@@ -279,7 +228,7 @@ class Cy
 
 		'&--' => proc do |x|
 			self.push @vars[x.to_s]
-			@vars[x.to_s] += 1
+			@vars[x.to_s] -= 1
 		end,
 
 		'--&' => proc do |x|
@@ -287,58 +236,97 @@ class Cy
 			self.push @vars[x.to_s]
 		end,
 
-		'+=' => proc do |var, val|
-			@vars[var.to_s] += val
-		end,
-
-		'+&=' => proc do |var, val|
-			self.push(@vars[var.to_s] += val)
-		end,
-
-		'-=' => proc do |var, val|
-			@vars[var.to_s] -= val
-		end,
-
-		'-&=' => proc do |var, val|
-			self.push(@vars[var.to_s] -= val)
-		end,
-
-		'*=' => proc do |var, val|
-			@vars[var.to_s] *= val
-		end,
-
-		'*&=' => proc do |var, val|
-			self.push(@vars[var.to_s] *= val)
-		end,
-
-		'/=' => proc do |var, val|
-			@vars[var.to_s] /= val
-		end,
-		
-		'/&=' => proc do |var, val|
-			self.push(@vars[var.to_s] /= val)
-		end,
-
-		'%=' => proc do |var, val|
-			@vars[var.to_s] %= val
-		end,
-
-		'%&=' => proc do |var, val|
-			self.push(@vars[var.to_s] %= val)
-		end,
-
-		'=' => proc do |var, val|
-			@vars[var.to_s] = val
-		end,
-
-		'&=' => proc do |var, val|
-			@vars[var.to_s] = val
-		end,
-
 		'exit' => proc do
 			exit
 		end
+	}
+
+	@@flow = {
+		'while' => proc do |con, body|
+			while Cy.bool(self.call con)
+				body.call
+			end
+		end,
+
+		'&while' => proc do |con, body|
+			while true
+				con.call
+				break unless Cy.bool(self.pop)
+				body.call
+			end
+		end,
+
+		'do' => proc do |body|
+			body.call
+			while Cy.bool(self.pop!)
+				body.call
+			end
+		end,
+
+		'&do' => proc do |body|
+			body.call
+			while Cy.bool(self.pop)
+				body.call
+			end
+		end,
+
+		'?' => proc do |con, t, f|
+			if Cy.bool(con)
+				t.call
+			else
+				f.call
+			end
+		end,
+
+		'&?' => proc do |t, f|
+			con = self.pop
+			if Cy.bool(con)
+				t.call
+			else
+				f.call
+			end
+		end,
+
+		'if' => proc do |con, body|
+			if Cy.bool(con)
+				body.call
+			end
+		end,
+
+		'each' => proc do |iter, body|
+			iter.each do |x|
+				self.push x
+				body.call
+			end
+		end,
+
+		'times' => proc do |x, y|
+			x,y = y,x if x.class == Proc
+			x.times(&y)
+		end,
+
+		'read' => proc do |stack, body|
+			@readers << stack
+			body.call
+			@readers.pop
+		end,
+
+		'write' => proc do |stack, body|
+			@writers << stack
+			body.call
+			@writers.pop
+		end,
+
 		}
+
+	def reader
+			@readers[-1]
+		end
+
+		def writer
+			@writers[-1]
+		end
+
 	def Cy.bool (val)
 		not [false, 0, nil, [], '', {}].include? (val)
 	end
@@ -382,7 +370,7 @@ class Cy
 		when /^"(.*)"$/
 			self.string $1
 
-		when /^=(\w+)$/
+		when /^=(\.+)$/
 			self.setVar $1
 
 		when /^&=(.+)$/
