@@ -7,6 +7,8 @@ class Cy
 		@vars = {}
 		@codes = {}
 
+		@ctx = []
+
 		stack = []
 		@readers = [stack]
 		@writers = [stack]
@@ -361,7 +363,13 @@ class Cy
 	
 	def func (s)
 		case s
-		when /^\.(\w+)/
+		when /^\^(.+)/
+			self.ctxmeth $1
+
+		when /^=(.+)$/
+			self.setVar $1
+
+		when /^\.(.+)$/
 			self.symbol $1
 
 		when /^\{\s*(.*?)\s*\}$/
@@ -370,16 +378,16 @@ class Cy
 		when /^"(.*)"$/
 			self.string $1
 
-		when /^=(\.+)$/
-			self.setVar $1
-
 		when /^&=(.+)$/
 			self.setVar $1, false
 
 		when /^\$(.+)$/
 			self.getVar $1
 
-		when /^(&?[.]+)$/
+		when /^(\d+\.?\d*)/
+			self.number $1
+
+		when /^(&?.+)$/
 			self.runMeth $1
 
 		else
@@ -410,9 +418,25 @@ class Cy
 		end
 	end
 
+	def ctxmeth(var)
+		proc do
+			if @ctx[0]
+				(self.func('&' + var)).call
+			else
+				(self.func(var)).call
+			end
+		end
+	end
+
 	def runMeth (var)
 		proc do
-			@vars[var].call
+			if @vars.key?('&' + var.gsub(/^&/, '')) # built-in
+				@vars[var].call
+			else # not a built-in
+				@ctx << (var[0] == '&')
+				@vars[var.gsub(/^&/, '')].call
+				@ctx.pop
+			end
 		end
 	end
 
@@ -425,6 +449,12 @@ class Cy
 	def string (s)
 		proc do
 			self.push eval('"' + s + '"')
+		end
+	end
+
+	def number (s)
+		proc do
+			self.push eval(s)
 		end
 	end
 
