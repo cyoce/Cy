@@ -89,14 +89,15 @@ class Cy
 		':>i' 	=> ->(){ Integer STDIN.gets },
 		':>f'	=> ->(){ Float STDIN.gets },
 		':>s'	=> ->(){ String(STDIN.gets).chomp },
-		':>c' 	=> ->(){ STDIN.getch },
+		':>c' 	=> ->(){ STDIN.getch.gsub("\r","\n") },
 		':>' 	=> ->(){ STDIN.gets && $_.chomp },
 		':i' 	=> ->(x){ Integer x },
 		':f' 	=> ->(x){ Float x },
 		':s'	=> ->(x){ String(x) },
 		':r' 	=> ->(x){ x.inspect },
 		'ord' 	=> ->(x){ x.ord },
-		'chr' 	=> ->(x){ x.chr }
+		'chr' 	=> ->(x){ x.chr },
+		':>R'	=> ->(x){ File.open(x).read }
 		}
 
 	@@mathops = {
@@ -107,6 +108,7 @@ class Cy
 		'%' 	=> ->(x,y){ x % y },
 		'<<'    => ->(x,y){ x << y },
 		'>>' 	=> ->(x,y){ x >> y },
+		'^' 	=> ->(x,y){ x ** y }
 		}
 
 	@@cmd = {
@@ -155,7 +157,7 @@ class Cy
 			end
 		end,
 
-		']' => proc do |item|
+		']' => proc do
 			self.push @active.pop
 		end,
 
@@ -343,9 +345,16 @@ class Cy
 		end,
 
 		'each' => proc do |iter, body|
-			iter.each do |x|
-				self.push x
-				body.call
+			if iter.class == Array
+				iter.each do |x|
+					self.push x
+					body.call
+				end
+			elsif iter.class == String
+				iter.each_char do |x|
+					self.push x
+					body.call
+				end
 			end
 		end,
 
@@ -380,6 +389,10 @@ class Cy
 
 		'::--' => proc do |iter, index|
 			iter[index] -= 1
+		end,
+
+		'exec' => proc do |code|
+			self.exec code
 		end
 
 		}
