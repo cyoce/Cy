@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'optparse'
+require 'io/console'
 
 class Cy
 	attr_accessor :vars, :stack, :arrays
@@ -25,6 +26,11 @@ class Cy
 			@vars["&#{key}="] = proc do
 				var, val = self.pop! 2
 				self.push(@vars[var.to_s] = func.call(@vars[var.to_s], val))
+			end
+
+			@vars["::#{key}"] = proc do
+				iter, index, val = self.pop! 3
+				iter[index] = func.call(iter[index], val)
 			end
 		end
 
@@ -70,8 +76,8 @@ class Cy
 		'<' 	=> ->(x,y){ x < y },
 		'>=' 	=> ->(x,y){ x >= y },
 		'<=' 	=> ->(x,y){ x <= y },
-		'=='	=> ->(x,y){ x == y },
-		'!='	=> ->(x,y){ x != y },
+		'><'	=> ->(x,y){ x == y },
+		'<>'	=> ->(x,y){ x != y },
 		'..'	=> ->(x,y){ Array x .. y },
 		'...'	=> ->(x,y){ x .. y },
 		'zip'	=> ->(x,y){ x.each_with_index.map { |i,j| [i, y[j]] } },
@@ -79,15 +85,18 @@ class Cy
 		'not'	=> ->(x){ not Cy.bool(x) },
 		'stack'	=> ->(){ self.pop! reader.size },
 		'&stack'=> ->(){ reader },
-		'array' => ->(){ [*x]},
+		'array' => ->(){ [*x] },
 		':>i' 	=> ->(){ Integer STDIN.gets },
 		':>f'	=> ->(){ Float STDIN.gets },
 		':>s'	=> ->(){ String(STDIN.gets).chomp },
+		':>c' 	=> ->(){ STDIN.getch },
 		':>' 	=> ->(){ STDIN.gets && $_.chomp },
 		':i' 	=> ->(x){ Integer x },
 		':f' 	=> ->(x){ Float x },
-		':s'	=> ->(x){ String x },
+		':s'	=> ->(x){ String(x) },
 		':r' 	=> ->(x){ x.inspect },
+		'ord' 	=> ->(x){ x.ord },
+		'chr' 	=> ->(x){ x.chr }
 		}
 
 	@@mathops = {
@@ -99,6 +108,7 @@ class Cy
 		'<<'    => ->(x,y){ x << y },
 		'>>' 	=> ->(x,y){ x >> y },
 		}
+
 	@@cmd = {
 		'!' => proc do |cmd|
 			instance_exec(&cmd)
@@ -106,6 +116,10 @@ class Cy
 
 		':<' => proc do |x|
 			puts x
+		end,
+
+		':<<' => proc do |x|
+			print x
 		end,
 
 		'zipwith' => proc do |x, y, func|
@@ -133,13 +147,16 @@ class Cy
 		end,
 
 		',' => proc do |item|
-			@active[-1] << item
+			active = @active[-1]
+			if active.class == Array
+				active << item
+			else
+				active.default = item
+			end
 		end,
 
 		']' => proc do |item|
-			array = @active.pop
-			array << item
-			self.push(array)
+			self.push @active.pop
 		end,
 
 		'(' => proc do
@@ -240,6 +257,36 @@ class Cy
 
 		'exit' => proc do
 			exit
+		end,
+
+		'=' => proc do |var|
+			if var.class == Array
+				vals = self.pop! var.size
+				var.each do |v|
+					@vars[v.to_s] = vals.shift
+				end
+			else
+				@vars[var.to_s] = self.pop!
+			end
+		end,
+
+		'&=' => proc do |var|
+			if var.class == Array
+				vals = self.pop var.size
+				var.each do |v|
+					@vars[v.to_s] = vals.shift
+				end
+			else
+				@vars[var.to_s] = self.pop
+			end
+		end,
+
+		'<~' => proc do |iter, item|
+			iter.push item
+		end,
+
+		'~>' => proc do |iter, item|
+			iter.unshift item
 		end
 	}
 
@@ -319,6 +366,22 @@ class Cy
 			@writers.pop
 		end,
 
+		'edit' => proc do |stack, body|
+			@writers << stack
+			@readers << stack
+			body.call
+			@writers.pop
+			@readers.pop
+		end,
+
+		'::++' => proc do |iter, index|
+			iter[index] += 1
+		end,
+
+		'::--' => proc do |iter, index|
+			iter[index] -= 1
+		end
+
 		}
 
 	def reader
@@ -362,7 +425,7 @@ class Cy
 	end
 	
 	def func (s)
-		case s
+		case s.strip
 		when /^\^(.+)/
 			self.ctxmeth $1
 
@@ -473,7 +536,7 @@ class Cy
 		level = 0
 		quote = escape = comment = false
 		i=0
-		iter = code.gsub(/\s+/, ' ').split('')
+		iter = code.gsub(/\s+/,' ').split('')
 		iter.each do |x|
 			if quote or comment
 			elsif x == '{'
@@ -486,9 +549,12 @@ class Cy
 			elsif quote
 				quote = not(quote) if x == '"'
 			elsif comment
-				comment = not(comment) if x == '#'
+				if x == '#'
+					comment = false
+					next
+				end
 			else
-				comment = not(comment) if x == '#'
+				comment = true if x == '#'
 				quote = not(quote) if x == '"'
 			end
 
@@ -498,17 +564,20 @@ class Cy
 				tokens[-1] += '#{self.pop}'
 			elsif quote or comment
 				tokens[-1] += x
-			elsif x == ' ' and level == 0
+			elsif x =~ /\s/ and level == 0
 				tokens << ''
-			elsif '[],!()'.include? x
+			elsif '[],!()'.include? x and level == 0
 				tokens << x << ''
+			elsif comment
+
 			else
 				tokens[-1] += x
 			end
-			i+=1
+			i += 1
 		end
-		tokens.pop if tokens[-1] == ''
-		tokens
+		tokens.select do |token|
+			token != ''
+		end
 	end
 	
 	def exec(line)
@@ -516,9 +585,14 @@ class Cy
 		tokens.each do |token|
 			next if token == ''
 			func = self.func token
-			func.call
+			begin
+				func.call
+			rescue
+				puts "\e[31m\e[1mError: `\e[21m#{token}'\e[0m"
+				raise $!
+			end
 		end
-		sleep(Float($int)/1000) if $int
+		sleep($int/1000.0) if $int
 	end
 
 	def prompt
@@ -610,6 +684,30 @@ parser = OptionParser.new do |args|
 			cy.exec code
 		end
 	end
+
+	args.on('-t [file]') do |file|
+		$action = proc do
+			Cy.tokens(File.read file).each do |x|
+				if x =~ /^\{(.*)\}$/
+					puts "{#{Cy.tokens($1).join(' ')}}"
+				else
+					puts x.inspect
+				end
+			end
+		end
+	end
+
+	args.on('-o [code]') do |code|
+		$action = proc do
+			Cy.tokens(code).each do |x|
+				if x =~ /^\{(.*)\}$/
+					puts "{#{Cy.tokens($1).join(' ')}}"
+				else
+					puts x.inspect
+				end
+			end
+		end
+	end
 	cy.push(*args.order(*ARGV))
 end
 $I = false
@@ -617,3 +715,7 @@ $implicit = false
 $int=nil
 parser.parse! ARGV
 $action.call
+#tokens = Cy.tokens(File.read 'bf.cy')
+#tokens.each do |x|
+#	puts x.inspect
+#end
