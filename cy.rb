@@ -2,6 +2,33 @@
 require 'optparse'
 require 'io/console'
 
+class CyError < Exception
+	def initialize
+	end
+end
+
+class Token
+	attr_accessor :line, :column, :content
+	def initialize(line=0, column=0, content='')
+		@line = line
+		@column = column
+		@content = content
+	end
+
+	def [](idx)
+		@content[idx]
+	end
+
+	def inspect
+		"[`#{@content.inspect[1...-1]}` @ #{@line}:#{@column}]"
+	end
+
+	def ==(other)
+		other.content == @content and other.column == @column and other.line == @line
+	end
+
+end
+
 class Cy
 	attr_accessor :vars, :stack, :arrays
 	def initialize
@@ -393,6 +420,10 @@ class Cy
 
 		'exec' => proc do |code|
 			self.exec code
+		end,
+
+		' ' => proc do
+
 		end
 
 		}
@@ -416,16 +447,20 @@ class Cy
 
 	def pop (n=nil)
 		if n
+			error "Stack Underflow" if reader.size < n
 			reader.slice(-n, n)
 		else
+			error "Stack Underflow" if reader.size == 0
 			reader[-1]
 		end
 	end
 
 	def pop! (n=nil)
 		if n
+			error "Stack Underflow" if reader.size < n
 			reader.slice!(-n, n)
 		else
+			error "Stack Underflow" if reader.size == 0
 			reader.pop
 		end
 	end
@@ -448,10 +483,10 @@ class Cy
 		when /^\.(.+)$/
 			self.symbol $1
 
-		when /^\{\s*(.*?)\s*\}$/
+		when /^\{\s*(.*?)\s*\}$/m
 			self.block $1
 
-		when /^"(.*)"$/
+		when /^"(.*)"$/m
 			self.string $1
 
 		when /^&=(.+)$/
@@ -545,12 +580,13 @@ class Cy
 	end
 
 	def Cy.tokens (code)
-		tokens = ['']
+		tokens = [[]]
 		level = 0
 		quote = escape = comment = false
 		i=0
-		iter = code.gsub(/\s+/,' ').split('')
-		iter.each do |x|
+		iter = Cy.tokenize(code)
+		iter.each do |token|
+			x = token.content
 			if quote or comment
 			elsif x == '{'
 				level += 1
@@ -560,7 +596,9 @@ class Cy
 			
 			if level > 0
 			elsif quote
-				quote = not(quote) if x == '"'
+				if x == '"'
+					quote = false
+				end
 			elsif comment
 				if x == '#'
 					comment = false
@@ -572,39 +610,57 @@ class Cy
 			end
 
 			if quote and not escape and x == '%'
-				tokens[-1] += '#{self.pop!}'
+				tokens[-1] << Token.new(token.line, token.column, '#{self.pop!}')
 			elsif quote and not escape and x == '&'
-				tokens[-1] += '#{self.pop}'
-			elsif quote or comment
-				tokens[-1] += x
-			elsif x =~ /\s/ and level == 0
-				tokens << ''
+				tokens[-1] << Token.new(token.line, token.column, '#{self.pop}')
+			elsif quote
+				tokens[-1] << token
+			elsif x == ' ' and level == 0
+				tokens << [token] << []
 			elsif '[],!()'.include? x and level == 0
-				tokens << x << ''
+				tokens << [token] << []
 			elsif comment
 
 			else
-				tokens[-1] += x
+				tokens[-1] << token
 			end
 			i += 1
 		end
-		tokens.select do |token|
-			token != ''
-		end
+		tokens.select { |token|
+			token.size > 0
+		}
+	end
+
+	def error(e)
+		puts "\e[31m#{e}\e[0m"
+		raise CyError.new
 	end
 	
 	def exec(line)
 		tokens = Cy.tokens(line)
-		tokens.each do |token|
-			next if token == ''
-			func = self.func token
-			begin
-				func.call
-			rescue
-				puts "\e[31m\e[1mError: `\e[21m#{token}'\e[0m"
-				raise $!
+#		begin
+			tokens.each do |list|
+				token = list.map{|x| x.content}.join('')
+				next if token == ''
+				func = self.func token
+				begin
+					func.call
+				rescue CyError
+					t = list[0]
+					print "\e[31m\t@\e[1m `\e[21m#{token}'"
+					puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
+					raise
+				rescue
+					t = list[0]
+					print "\e[31mRubyError\e[0m" unless $!.class == CyError
+					print  "\n\e[31m\t@\e[1m `\e[21m#{token}'"
+					puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
+					raise
+				end
 			end
-		end
+#		rescue
+#			raise $!.error
+#		end
 		sleep($int/1000.0) if $int
 	end
 
@@ -647,6 +703,51 @@ class Cy
 		else
 			item.inspect
 		end
+	end
+
+	def Cy.tokenize(code)
+		tokens = []
+		escape = quote = space = comment = false
+		column = line = 0
+		code.each_char do |char|
+			if quote
+				if escape
+					tokens << Token.new(line, column, eval('"\\' + char + '"'))
+					escape = false
+				elsif char == '"'
+					tokens << Token.new(line, column, '"')
+					quote = false
+				elsif char == '\\'
+					escape = true
+				else
+					tokens << Token.new(line, column, char)
+				end
+			elsif comment
+				if char == "\n"
+					tokens << Token.new(line, column, ' ') unless space
+					comment = false
+				end
+			elsif /\s/ =~ char
+				if char == "\n"
+					column = 0
+					line += 1
+				else
+					column += 1
+				end
+				tokens << Token.new(line, column, ' ') unless space
+				space = true
+			else
+				if char == '#'
+					comment = true
+					next
+				end
+				space = false
+				tokens << Token.new(line, column, char)
+				quote = true if char == '"'
+				column += 1
+			end
+		end
+		tokens
 	end
 end
 $action = nil
@@ -701,23 +802,16 @@ parser = OptionParser.new do |args|
 	args.on('-t [file]') do |file|
 		$action = proc do
 			Cy.tokens(File.read file).each do |x|
-				if x =~ /^\{(.*)\}$/
-					puts "{#{Cy.tokens($1).join(' ')}}"
-				else
-					puts x.inspect
-				end
+				#puts "`#{x.join('')}` @ #{x[0].line}:#{x[0].column}"
+				puts "`#{x.map{|i| i.content.inspect[1...-1].gsub('\"', '"')}.join('')}` @ #{x[0].line}:#{x[0].column}"
 			end
 		end
 	end
 
 	args.on('-o [code]') do |code|
 		$action = proc do
-			Cy.tokens(code).each do |x|
-				if x =~ /^\{(.*)\}$/
-					puts "{#{Cy.tokens($1).join(' ')}}"
-				else
-					puts x.inspect
-				end
+			Cy.tokenize(code).each do |x|
+				puts x.inspect
 			end
 		end
 	end
@@ -727,7 +821,11 @@ $I = false
 $implicit = false
 $int=nil
 parser.parse! ARGV
-$action.call
+begin
+	$action.call
+rescue CyError
+	exit
+end
 #tokens = Cy.tokens(File.read 'bf.cy')
 #tokens.each do |x|
 #	puts x.inspect
