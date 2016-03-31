@@ -647,7 +647,7 @@ class Cy
 	end
 
 	def error(e)
-		puts "\e[31m#{e}\e[0m"
+		STDERR.puts "\e[31m#{e}\e[0m"
 		raise CyError.new
 	end
 	
@@ -662,14 +662,14 @@ class Cy
 					func.call
 				rescue CyError
 					t = list[0]
-					print "\e[31m\t@\e[1m `\e[21m#{token}'"
-					puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
+					STDERR.print "\e[31m\t@\e[1m `\e[21m#{token}'"
+					STDERR.puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
 					raise
 				rescue
 					t = list[0]
-					print "\e[31mRubyError\e[0m" unless $!.class == CyError
-					print  "\n\e[31m\t@\e[1m `\e[21m#{token}'"
-					puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
+					STDERR.print "\e[31mRubyError\e[0m" unless $!.class == CyError
+					STDERR.print  "\n\e[31m\t@\e[1m `\e[21m#{token}'"
+					STDERR.STDERR.puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
 					raise
 				end
 			end
