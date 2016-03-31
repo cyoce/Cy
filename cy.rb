@@ -107,7 +107,10 @@ class Cy
 		'<>'	=> ->(x,y){ x != y },
 		'..'	=> ->(x,y){ Array x .. y },
 		'...'	=> ->(x,y){ x .. y },
-		'zip'	=> ->(x,y){ x.each_with_index.map { |i,j| [i, y[j]] } },
+		'zip'	=> ->(x,y){
+			x,y = y,x if x.size > y.size
+			x.each_with_index.map { |i,j| [i, y[j]] }
+		},
 		'len'	=> ->(x){ x.size },
 		'not'	=> ->(x){ not Cy.bool(x) },
 		'stack'	=> ->(){ self.pop! reader.size },
@@ -506,9 +509,7 @@ class Cy
 			if cmd
 				cmd
 			else
-				proc do
-					self.push (eval s)
-				end
+				error "Invalid token: `#{s}`"
 			end
 		end
 	end
@@ -559,13 +560,18 @@ class Cy
 
 	def string (s)
 		proc do
-			self.push eval('"' + s + '"')
+			self.push eval('"' + s.gsub(/"/, '\"') + '"')
 		end
 	end
 
 	def number (s)
 		proc do
-			self.push eval(s)
+			begin
+				n = Integer(s)
+			rescue
+				n = Float(s)
+			end
+			self.push n
 		end
 	end
 
@@ -596,7 +602,7 @@ class Cy
 			
 			if level > 0
 			elsif quote
-				if x == '"'
+				if x == '"' and not escape
 					quote = false
 				end
 			elsif comment
@@ -614,7 +620,16 @@ class Cy
 			elsif quote and not escape and x == '&'
 				tokens[-1] << Token.new(token.line, token.column, '#{self.pop}')
 			elsif quote
-				tokens[-1] << token
+				if escape
+					tokens[-1] << Token.new(token.line, token.column, x)
+					escape = false
+				elsif x == '\\'
+					escape = true
+				elsif x == '#'
+					tokens[-1] << Token.new(token.line, token.column, '\#')
+				else
+					tokens[-1] << token
+				end
 			elsif x == ' ' and level == 0
 				tokens << [token] << []
 			elsif '[],!()'.include? x and level == 0
@@ -712,13 +727,14 @@ class Cy
 		code.each_char do |char|
 			if quote
 				if escape
-					tokens << Token.new(line, column, eval('"\\' + char + '"'))
+					tokens << Token.new(line, column, char)
 					escape = false
 				elsif char == '"'
 					tokens << Token.new(line, column, '"')
 					quote = false
 				elsif char == '\\'
 					escape = true
+					tokens << Token.new(line, column, char)
 				else
 					tokens << Token.new(line, column, char)
 				end
@@ -743,7 +759,7 @@ class Cy
 				end
 				space = false
 				tokens << Token.new(line, column, char)
-				quote = true if char == '"'
+				quote = true if char == '"' and not escape
 				column += 1
 			end
 		end
