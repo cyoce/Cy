@@ -108,8 +108,11 @@ class Cy
 		'..'	=> ->(x,y){ Array x .. y },
 		'...'	=> ->(x,y){ x .. y },
 		'zip'	=> ->(x,y){
-			x,y = y,x if x.size > y.size
-			x.each_with_index.map { |i,j| [i, y[j]] }
+			[x.take(y.size), y.take(x.size)].transpose
+		},
+		'zip*' => ->(list){
+			min = list.map(&:size).min
+			list.map{|x| x.take(min)}.transpose
 		},
 		'len'	=> ->(x){ x.size },
 		'not'	=> ->(x){ not Cy.bool(x) },
@@ -155,11 +158,11 @@ class Cy
 		end,
 
 		'zipwith' => proc do |x, y, func|
-			out = []
+			out = Array.new x.size
 			(0...x.size).each do |i|
 				self.push x[i], y[i]
 				func.call
-				out << self.pop!
+				out[i] = self.pop!
 			end
 			self.push out
 		end,
@@ -590,8 +593,8 @@ class Cy
 		level = 0
 		quote = escape = comment = false
 		i=0
-		iter = Cy.tokenize(code)
-		iter.each do |token|
+		code = Cy.tokenize(code) unless Array === code
+		code.each do |token|
 			x = token.content
 			if quote or comment
 			elsif x == '{'
@@ -669,7 +672,7 @@ class Cy
 					t = list[0]
 					STDERR.print "\e[31mRubyError\e[0m" unless $!.class == CyError
 					STDERR.print  "\n\e[31m\t@\e[1m `\e[21m#{token}'"
-					STDERR.STDERR.puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
+					STDERR.puts " \e[0m\e[31m(#{t.line}:#{t.column})\e[0m"
 					raise
 				end
 			end
@@ -680,7 +683,7 @@ class Cy
 	end
 
 	def prompt
-		print "\e[37m>> \e[0m\e[1m\t "
+		print "\e[37m>>>\e[0m\e[1m "
 	end
 
 	def repl_line(file, disp=true)
@@ -691,7 +694,7 @@ class Cy
 		print "#{$_.chomp + "\n"}" if disp
 		print "\e[0m"
 		self.exec $_
-		print "\e[32m=> "
+		print "\e[32m:: "
 		puts self.inspect_it(writer), "\e[0m"
 		true
 	end
