@@ -39,7 +39,8 @@ A variable is initialized with an `=` sign before it. This will pop a value off 
 - `.foo &--` decrement and push old value
 - `.foo --&` decrement and push new value
 - `.foo 2 +=` add 2
-- `.foo 2 +&=` add 2, push result
+- `.foo 2 &+=` add 2, push result
+- `.foo 2 ^+=` add 2, push result IFF block was called with `&`.
 
 ## Blocks and Functions
 A block is surrounded by `{ }`. This denotes a set of instructions. **A block of code is an object containing a set of instructions, and as such these instructions are not immediately executed**. Blocks are passed as arguments to constructions such as the `while` loop, `if` statement, etc. 
