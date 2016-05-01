@@ -48,18 +48,19 @@ Since a block is simply a type of object, blocks can of course be pushed and pop
 
 Example:
 
+```ruby
+>> { 1 + 2 * } =f    # f(x) = 2(x+1)
+=> []
+	
+>> 3 f
+=> [8]
+	
+>> $f
+=> [8, { 1 + 2 * }]
 
-	>> { 1 + 2 * } =f    # f(x) = 2(x+1)
-	=> []
-	
-	>> 3 f
-	=> [8]
-	
-	>> $f
-	=> [8, { 1 + 2 * }]
-	
-	>> !
-	=> [18]
+>> !
+=> [18]
+```
 
 ### Control Flow
 Control flow operators take one or more blocks ("body") and often a "condition" (which may also be a block) that determines how the body is executed. By convention, the "condition" is before the "body". This is because the need for a variable condition is greater than the need for a variable body, so the condition can simply be popped off the stack. Unless otherwise specified, preceding the loop's name with an ampersand `&` will leave the condition on the stack. (e.g. `&each` will leave the iterable on the stack.) Common examples are the `if` statement, `while` loop, and `each` loop. 
@@ -77,12 +78,12 @@ Values are surrounded by parentheses `()` and arguments that expect blocks will 
 # Examples
 
 ## Hello, World program
-```
+```ruby
 "Hello, World!" print
-
+```
 
 ## Infinite Fibonacci Sequence
-```
+```ruby
 0 &print 1 &print {&+ &print} {true} while
 ```
 Golfed:
