@@ -23,7 +23,19 @@
 - `!!` subscript
 - `>`, `<`, `>=`, `<=`, `==` `!=` comparison
 
-An ampersand `&` preceding an operator will leave its operands on the stack.
+An ampersand `&` preceding an operator will leave its operands on the stack (dubbed [safe]guarding/shielding/safe mode).
+
+A caret `^` preceding a method call will call the method in safe mode only if its containing block was called in safe mode.
+
+Example: 
+```ruby
+>> {^+} =f
+>> 1 2 3 f
+:: [1 5]
+
+>> &f
+:: [1 5 6]
+```
 
 ## Variables
 A variable is initialized with an `=` sign before it. This will pop a value off of the stack and assign it to the variable. E.g., `10 =x` will assign `x` to 10. The value of a variable can be retrieved with a `$` sign. E.g., if `x` is 10, `$x` will push `10` to the stack. A reference to a variable is denoted by `.`, as in `.x`. This is used for augmented assignment and the like.
@@ -40,7 +52,7 @@ A variable is initialized with an `=` sign before it. This will pop a value off 
 - `.foo --&` decrement and push new value
 - `.foo 2 +=` add 2
 - `.foo 2 &+=` add 2, push result
-- `.foo 2 ^+=` add 2, push result IFF block was called with `&`.
+- `.foo 2 ^+=` add 2, push result IFF block was called with `&` guard.
 
 ## Blocks and Functions
 A block is surrounded by `{ }`. This denotes a set of instructions. **A block of code is an object containing a set of instructions, and as such these instructions are not immediately executed**. Blocks are passed as arguments to constructions such as the `while` loop, `if` statement, etc. 
